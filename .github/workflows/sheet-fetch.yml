@@ -1,14 +1,15 @@
 name: Fetch Google Sheet Data
+
 on:
-  schedule:
-    - cron: "0 * * * *" # Runs every hour
-  workflow_dispatch:
+  workflow_dispatch: # Manual trigger from GitHub UI
+  repository_dispatch: # Triggered by Google Apps Script
+    types: [sheet-updated] # Must match the event in the Apps Script
 
 jobs:
-  run-script:
+  fetch_data:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Setup Node.js
@@ -16,10 +17,10 @@ jobs:
         with:
           node-version: 18
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: npm install
 
-      - name: Run Script
-        run: node script.js
+      - name: Run script
         env:
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
+        run: node script.js
