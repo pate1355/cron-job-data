@@ -4,18 +4,28 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
-const filePath = path.join(__dirname, "firebaseToSheetKey.json");
+// Decode the Base64 secret stored in GitHub Environment Secrets
+const firebaseCredsBase64 = process.env.FIREBASE_CREDENTIALS;
 
-// Load credentials from JSON key file
+if (!firebaseCredsBase64) {
+  console.error("FIREBASE_CREDENTIALS environment variable is missing.");
+  process.exit(1);
+}
+
+// Convert from Base64 to JSON
+const firebaseCreds = JSON.parse(
+  Buffer.from(firebaseCredsBase64, "base64").toString("utf8")
+);
+
+// Authenticate Google Sheets API using Firebase credentials
 const auth = new google.auth.GoogleAuth({
-  keyFile: filePath, // Replace with your JSON key file
+  credentials: firebaseCreds,
   scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
 });
 
-// Initialize Firebase
-
+// Initialize Firebase with decoded credentials
 const app = admin.initializeApp({
-  credential: admin.credential.cert(filePath), // Use your correct key file
+  credential: admin.credential.cert(firebaseCreds),
 });
 
 // Function to save data to Firestore
