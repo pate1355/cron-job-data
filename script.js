@@ -1,7 +1,6 @@
 const { google } = require("googleapis");
 const admin = require("firebase-admin");
 const fs = require("fs");
-const path = require("path");
 require("dotenv").config();
 
 // Decode the Base64 secret stored in GitHub Environment Secrets
@@ -17,67 +16,69 @@ const firebaseCreds = JSON.parse(
   Buffer.from(firebaseCredsBase64, "base64").toString("utf8")
 );
 
-// Authenticate Google Sheets API using Firebase credentials
+// Initialize Firebase Admin SDK
+const app = admin.initializeApp({
+  credential: admin.credential.cert(firebaseCreds),
+});
+const db = admin.firestore(app);
+
+// Authenticate Google Sheets API
 const auth = new google.auth.GoogleAuth({
   credentials: firebaseCreds,
   scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
 });
+const sheets = google.sheets({ version: "v4", auth });
 
-// Initialize Firebase with decoded credentials
-const app = admin.initializeApp({
-  credential: admin.credential.cert(firebaseCreds),
-});
+// Constants
+const SPREADSHEET_ID = "1tYaBYjZi92ml1hxjgxxcy9b7vXgYWInAYn0gruCT6lA";
+const RANGE = "Sheet1!A:J"; // Adjust range as needed
 
-// Function to save data to Firestore
-const setData = async (data) => {
-  try {
-    const db = admin.firestore(app);
-    const ref = db.collection("data").doc("sheetData"); // Consider making this dynamic
-    await ref.set({ data });
-    console.log("Data saved to Firestore");
-  } catch (error) {
-    console.error("Error saving to Firestore:", error);
-  }
-};
-
-// Function to fetch and process data from Google Sheets
+// Function to fetch data from Google Sheets
 async function getSheetData() {
-  const client = await auth.getClient();
-  const sheets = google.sheets({ version: "v4", auth: client });
-
-  //   const spreadsheetId = "1ooPvU2eFN7t25e3HhxB1jrTizce0lXc_gfK4h8S2sWA"; // Replace with your spreadsheet ID
-  //   const range = "Sheet1!A1:J51"; // Replace with your desired range
-  const spreadsheetId = "1tYaBYjZi92ml1hxjgxxcy9b7vXgYWInAYn0gruCT6lA"; // Replace with your spreadsheet ID
-  const range = "Sheet1!A:J"; // Adjust range as needed
-
   try {
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range,
+      spreadsheetId: SPREADSHEET_ID,
+      range: RANGE,
     });
 
     if (!response.data.values || response.data.values.length === 0) {
-      console.log("No data found.");
+      console.log("No data found from Sheets.");
+      console.log(
+        "Moving to delete all existing data from SheetData File, and then Firestore..."
+      );
+      console.log("Deleting all data from SheetData File...");
+      await deleteAllCustomersFromSheetData();
+      console.log("Deleting all data from Firestore...");
+      await deleteAllCustomersQuickly();
       return;
     }
 
     const [header, ...rows] = response.data.values;
 
-    // Convert rows into JSON objects with header mapping
-    let data = rows.map((row) =>
+    // Map rows to JSON objects
+    const data = rows.map((row) =>
       row.reduce((acc, value, index) => {
         acc[header[index]] = value;
         return acc;
       }, {})
     );
 
-    // Sort data by "Name" key for consistent comparison
-    // data.sort((a, b) => (Number(a.ID) || "").localeCompare(Number(b.ID) || ""));
-    data.map((item) => {
-      item.ID = Number(item.ID);
-      item.Price = Number(item.Price);
-      item.Date = new Date(item.Date).toISOString();
-    });
+    processAndSaveData(data);
+  } catch (error) {
+    console.error("Error fetching or processing data from Sheets:", error);
+  }
+}
+
+// Function to process and save data to Firestore and file
+async function processAndSaveData(data) {
+  try {
+    // Convert to proper data types
+    data = data.map((item) => ({
+      ...item,
+      ID: Number(item.ID),
+      Price: Number(item.Price),
+      Date: new Date(item.Date).toISOString(),
+    }));
 
     let fileData = { data: [] };
 
@@ -88,38 +89,93 @@ async function getSheetData() {
       console.warn("No existing sheetData.json found. Creating a new one.");
     }
 
-    // Compare new data with existing file data
+    // Compare new data with existing data
     const isDataEqual = JSON.stringify(data) === JSON.stringify(fileData.data);
-
     if (isDataEqual) {
       console.log("Data is up to date. No changes detected.");
-    } else {
-      console.log("Data has changed. Updating...");
+      return;
+    }
 
-      // Identify changes
-      const diff = data.filter(
-        (newItem) =>
-          !fileData.data.some(
-            (oldItem) => JSON.stringify(oldItem) === JSON.stringify(newItem)
-          )
-      );
+    console.log("Data has changed. Identifying differences...");
 
-      console.log("Updated rows:", diff);
+    // Identify new and updated entries
+    const diff = identifyChanges(fileData.data, data);
+    console.log("Changes identified:", diff);
 
-      // Save new data to file
-      fs.writeFileSync("sheetData.json", JSON.stringify({ data }, null, 2));
-      console.log("Updated data saved to sheetData.json");
+    // Save new data to sheetData.json
+    fs.writeFileSync("sheetData.json", JSON.stringify({ data }, null, 2));
+    console.log("Updated data saved to sheetData.json");
 
-      // Save updated data to Firestore
-
-      //save date as timestamp, ID as number, and Phone as number, and Price as number
-
-      await setData(data);
+    // Save updated data to Firestore
+    if (diff.length > 0) {
+      await updateFirestoreData(diff);
     }
   } catch (error) {
-    console.error("Error fetching or processing data:", error);
+    console.error("Error processing or saving data:", error);
   }
 }
 
-// Run script
+// Function to identify changes between old and new data
+function identifyChanges(oldData, newData) {
+  return newData.filter(
+    (newItem) =>
+      !oldData.some(
+        (oldItem) => JSON.stringify(oldItem) === JSON.stringify(newItem)
+      )
+  );
+}
+
+// Function to save the data to Firestore (only new/updated data)
+async function updateFirestoreData(diff) {
+  try {
+    const ref = db.collection("data").doc("sheetData");
+
+    // Only set diff data without overwriting existing data
+    await ref.set(
+      {
+        data: admin.firestore.FieldValue.arrayUnion(...diff),
+      },
+      { merge: true }
+    );
+
+    console.log("New data saved to Firestore.");
+  } catch (error) {
+    console.error("Error saving data to Firestore:", error);
+  }
+}
+
+// Function to delete all customers from Firestore
+
+async function deleteAllCustomersQuickly() {
+  try {
+    const snapshot = await db.collection("data").doc("sheetData").get();
+
+    if (!snapshot.exists) {
+      console.log("No data in Firestore to delete.");
+      return;
+    }
+
+    const data = snapshot.data().data;
+    if (data.length === 0) {
+      console.log("Firestore data is already empty.");
+      return;
+    }
+
+    await db.collection("data").doc("sheetData").set({ data: [] });
+    console.log("All data deleted from Firestore.");
+  } catch (error) {
+    console.error("Error deleting data from Firestore:", error);
+  }
+}
+
+async function deleteAllCustomersFromSheetData() {
+  try {
+    fs.writeFileSync("sheetData.json", JSON.stringify({ data: [] }, null, 2));
+    console.log("All data deleted from sheetData.json.");
+  } catch (error) {
+    console.error("Error deleting data from sheetData.json:", error);
+  }
+}
+
+// Run the script
 getSheetData();
