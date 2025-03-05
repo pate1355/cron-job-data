@@ -1,0 +1,5 @@
+node_modules
+.DS_Store
+.env
+//do  not commit the .firebaseToSheetKey.json file
+.firebaseToSheetKey.json
