@@ -49,7 +49,7 @@ async function getSheetData() {
       console.log("Deleting all data from SheetData File...");
       await deleteAllCustomersFromSheetData();
       console.log("Deleting all data from Firestore...");
-      await deleteAllCustomersQuickly();
+      await deleteAllCustomersFromFirestore();
       return;
     }
 
@@ -72,13 +72,33 @@ async function getSheetData() {
 // Function to process and save data to Firestore and file
 async function processAndSaveData(data) {
   try {
-    // Convert to proper data types
-    data = data.map((item) => ({
-      ...item,
-      ID: Number(item.ID),
-      Price: Number(item.Price),
-      Date: new Date(item.Date).toISOString(),
-    }));
+    // Convert to proper data types and filter out incomplete rows
+    data = data
+      .map((item) => {
+        let validDate = new Date(item.Date);
+        return {
+          ...item,
+          ID: Number(item.ID) || null, // Convert ID to number, set null if invalid
+          Price: Number(item.Price) || null, // Convert Price to number, set null if invalid
+          Date:
+            item.Date && !isNaN(validDate.getTime())
+              ? validDate.toISOString()
+              : null, // Ensure valid date
+        };
+      })
+      .filter((newItem) => {
+        // Check if all required headers have values
+        const allValuesPresent = Object.values(newItem).every(
+          (value) => value !== undefined && value !== null && value !== ""
+        );
+
+        if (!allValuesPresent) {
+          console.warn(`Skipping incomplete row ${newItem.ID}`, newItem);
+          return false;
+        }
+
+        return allValuesPresent;
+      });
 
     let fileData = { data: [] };
 
@@ -146,7 +166,7 @@ async function updateFirestoreData(diff) {
 
 // Function to delete all customers from Firestore
 
-async function deleteAllCustomersQuickly() {
+async function deleteAllCustomersFromFirestore() {
   try {
     const snapshot = await db.collection("data").doc("sheetData").get();
 
