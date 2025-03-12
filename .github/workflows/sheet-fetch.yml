@@ -23,4 +23,4 @@ jobs:
       - name: Run script
         env:
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
-        run: node script.js
+        run: node script.js # Run the script to fetch data from Google Sheet
