@@ -34,7 +34,7 @@ const sheets = google.sheets({ version: "v4", auth });
 
 // Constants
 const SPREADSHEET_ID = "1tYaBYjZi92ml1hxjgxxcy9b7vXgYWInAYn0gruCT6lA";
-const RANGE = "Sheet1!A:J"; // Adjust range as needed
+const RANGE = "Sheet1!A:K"; // Adjust range as needed
 
 // Function to fetch data from Google Sheets
 async function fetchSheetData() {
@@ -64,7 +64,7 @@ async function fetchSheetData() {
             : row[index] || null;
         return obj;
       }, {});
-      job.hash = generateHash(job); // Generate unique hash for each row
+      //   job.hash = generateHash(job); // Generate unique hash for each row
       return job;
     });
   } catch (error) {
@@ -73,62 +73,26 @@ async function fetchSheetData() {
   }
 }
 
-// Generate a SHA-256 hash of the job data
-function generateHash(job) {
-  const jobString = JSON.stringify([
-    job.job_title,
-    job.company_name,
-    job.job_description,
-    job.job_category,
-    job.job_type,
-    job.offered_salary,
-    job.location,
-    job.tags.join(","),
-    job.experience_required,
-    job.education_required,
-  ]);
-  return crypto.createHash("sha256").update(jobString).digest("hex");
-}
-
 //  Fetch all existing records from Supabase.
 
 async function getExistingData() {
-  const { data, error } = await supabase.from("job_post_data").select("hash");
+  const { data, error } = await supabase.from("job_post_data").select("id");
 
   if (error) {
     console.error("Error fetching existing data from Supabase:", error);
     return new Set();
   }
 
-  return new Set(data.map((job) => job.hash)); // Store hashes for comparison
+  return new Set(data.map((post) => post.id));
 }
 
 //  Filter out new records (records that are NOT in Supabase).
 
 function filterNewRecords(sheetData, existingHashes) {
-  return sheetData.filter((job) => !existingHashes.has(job.hash)); // Insert only if hash is new
+  return sheetData.filter((job) => !existingHashes.has(job.id)); // Insert only if hash is new
 }
 
 //Insert only new records into Supabase.
-
-// async function insertDataToSupabase(newData) {
-//   if (newData.length === 0) {
-//     console.log("No new data to insert.");
-//     return;
-//   }
-
-//   try {
-//     const batchSize = 100; // Insert in batches to avoid API limits
-//     for (let i = 0; i < newData.length; i += batchSize) {
-//       const batch = newData.slice(i, i + batchSize);
-//       const { error } = await supabase.from("job_post_data").insert(batch);
-//       if (error) throw error;
-//       console.log(`Inserted batch ${i / batchSize + 1} successfully.`);
-//     }
-//   } catch (error) {
-//     console.error("Error inserting data into Supabase:", error);
-//   }
-// }
 
 async function insertDataToSupabase(newRecords) {
   if (newRecords.length === 0) {
