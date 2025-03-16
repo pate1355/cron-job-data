@@ -23,4 +23,4 @@ jobs:
       - name: Run supabase script
         env:
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
-        run: node supabase.js # Run the script to fetch data from Google Sheet
+        run: node supabase.js
