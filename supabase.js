@@ -3,6 +3,8 @@ const { google } = require("googleapis");
 const { createClient } = require("@supabase/supabase-js");
 const axios = require("axios");
 const crypto = require("crypto");
+const dotenv = require("dotenv");
+dotenv.config();
 
 // Initialize Supabase
 const supabase = createClient(
