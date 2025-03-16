@@ -20,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run script
+      - name: Run supabase script
         env:
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
-        run: node script.js # Run the script to fetch data from Google Sheet
+        run: node supabase.js # Run the script to fetch data from Google Sheet
