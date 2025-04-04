@@ -31,7 +31,7 @@ const sheets = google.sheets({ version: "v4", auth });
 
 // Constants
 const SPREADSHEET_ID = "1tYaBYjZi92ml1hxjgxxcy9b7vXgYWInAYn0gruCT6lA";
-const RANGE = "Sheet1!A:L"; // Adjust range as needed
+const RANGE = "Sheet1!A:M"; // Adjust range as needed
 
 // Function to fetch data from Google Sheets
 async function fetchSheetData() {
@@ -118,6 +118,7 @@ async function identifyChanges(existingData, sheetData) {
         "experience_required",
         "education_required",
         "count",
+        "Company_Link",
       ];
       const updatedFields = fieldsToCheck.reduce((acc, field) => {
         if (!_.isEqual(element[field], existingItem[field])) {
